@@ -62,6 +62,7 @@ func AddTaskHandler(w http.ResponseWriter, r *http.Request, db *sqlite.SQLiteWor
 	var taskDate time.Time
 
 	if req.Date == "" {
+		req.Date = now.Format("20060102")
 		taskDate = now
 	} else {
 		taskDate, err = time.Parse("20060102", req.Date)
@@ -72,20 +73,13 @@ func AddTaskHandler(w http.ResponseWriter, r *http.Request, db *sqlite.SQLiteWor
 	}
 
 	if taskDate.Before(now) || taskDate.Equal(now) {
-		if req.Repeat != "" {
-			nextDateStr, err := services.NextDate(now, req.Date, req.Repeat)
-			if err != nil {
-				respondWithError(w, "Неправильное правило повторения")
-				return
-			}
-			nextDate, _ := time.Parse("20060102", nextDateStr)
-			if nextDate.Before(now.AddDate(0, 0, 1)) {
-				taskDate = now
-			} else {
-				taskDate = nextDate
-			}
-		} else {
-			taskDate = now
+		taskDate = now
+
+	}
+	if req.Repeat != "" {
+		if _, err := services.NextDate(now, req.Date, req.Repeat); err != nil {
+			respondWithError(w, "Неправильное правило повторения")
+			return
 		}
 	}
 
@@ -120,6 +114,7 @@ func respondWithJSON(w http.ResponseWriter, payload interface{}) {
 }
 
 func respondWithError(w http.ResponseWriter, error string) {
+	w.WriteHeader(http.StatusBadRequest)
 	respondWithJSON(w, map[string]string{"error": error})
 }
 
@@ -278,7 +273,7 @@ func UpdateTaskHandler(w http.ResponseWriter, r *http.Request, db *sqlite.SQLite
 func TaskDoneHandler(w http.ResponseWriter, r *http.Request, db *sqlite.SQLiteWorker) {
 
 	idStr := r.URL.Query().Get("id")
-	if idStr == "" || idStr == "<nil>" {
+	if idStr == "" {
 		respondWithJSON(w, map[string]string{"error": "Некорректный идентификатор задачи"})
 		return
 	}
@@ -309,7 +304,8 @@ func TaskDoneHandler(w http.ResponseWriter, r *http.Request, db *sqlite.SQLiteWo
 		respondWithJSON(w, struct{}{})
 		return
 	}
-	nextDateStr, err := services.NextDate(task.Date, task.Date.Format("20060102"), task.Repeat)
+	nextDateStr, err := services.NextDate(time.Now(), task.Date.Format("20060102"), task.Repeat)
+
 	if err != nil {
 		respondWithJSON(w, map[string]string{"error": "Ошибка при вычислении следующей даты"})
 		return
@@ -322,6 +318,7 @@ func TaskDoneHandler(w http.ResponseWriter, r *http.Request, db *sqlite.SQLiteWo
 
 	task.Date = nextDate
 	err = db.UpdateTask(task)
+
 	if err != nil {
 		respondWithJSON(w, map[string]string{"error": "Ошибка при обновлении задачи"})
 		return
@@ -329,14 +326,20 @@ func TaskDoneHandler(w http.ResponseWriter, r *http.Request, db *sqlite.SQLiteWo
 	respondWithJSON(w, struct{}{})
 }
 func DeleteTaskHandler(w http.ResponseWriter, r *http.Request, db *sqlite.SQLiteWorker) {
+	if r.Method != http.MethodDelete {
+		respondWithError(w, "Неподдерживаемый метод")
+		return
+	}
 	idStr := r.URL.Query().Get("id")
-	if idStr == "" || idStr == "<nil>" {
+	if idStr == "" {
 		respondWithError(w, "Некорректный идентификатор задачи")
 		return
 	}
+
 	id, err := strconv.Atoi(idStr)
+
 	if err != nil {
-		respondWithError(w, "Некорректный идентификатор задачи")
+		respondWithError(w, "не смог преобразовать id в инт")
 		return
 	}
 	err = db.DeleteTask(id)
@@ -344,5 +347,5 @@ func DeleteTaskHandler(w http.ResponseWriter, r *http.Request, db *sqlite.SQLite
 		respondWithError(w, "Ошибка при удалении задачи")
 		return
 	}
-	respondWithJSON(w, struct{}{}) // Передаем nil для отправки пустого JSON объекта {}
+	respondWithJSON(w, struct{}{})
 }
