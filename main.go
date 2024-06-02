@@ -3,12 +3,13 @@ package main
 import (
 	"log"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
+
+	"qwe/config"
 	"qwe/db"
 	sqlite "qwe/db/sqlLite"
 	"qwe/handlers"
-
-	"github.com/go-chi/chi/v5"
-	"qwe/config"
 )
 
 func main() {
